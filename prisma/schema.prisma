@@ -8,48 +8,232 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-enum Role {
-  USER
-  ADMIN
-}
-
 model User {
   id                  String         @id @default(uuid())
-  firebaseUid         String?        @unique @map("firebase_uid")
-  username            String?        @unique
-  fullName            String?        @map("full_name")
   email               String?        @unique
-  phone               String?        @unique
-  passwordHash        String?        @map("password_hash")
-  bio                 String?
-  websiteUrl          String?        @map("website_url")
-  location            String?
+  role                Role           @default(USER)
   avatarUrl           String?        @map("avatar_url")
-  isPrivate           Boolean        @default(false) @map("is_private")
-  isEmailVerified     Boolean        @default(false) @map("is_email_verified")
-  postCount           Int            @default(0) @map("post_count")
+  bio                 String?
+  createdAt           DateTime       @default(now()) @map("created_at")
+  firebaseUid         String?        @unique @map("firebase_uid")
   followerCount       Int            @default(0) @map("follower_count")
   followingCount      Int            @default(0) @map("following_count")
-  role                Role           @default(USER)
+  fullName            String?        @map("full_name")
+  isEmailVerified     Boolean        @default(false) @map("is_email_verified")
+  isPrivate           Boolean        @default(false) @map("is_private")
+  location            String?
   onboardingDone      Boolean        @default(false) @map("onboarding_done")
-  resetTokenHash      String?        @map("reset_token_hash")
+  passwordHash        String?        @map("password_hash")
+  phone               String?        @unique
+  postCount           Int            @default(0) @map("post_count")
   resetTokenExpiresAt DateTime?      @map("reset_token_expires_at")
-  createdAt           DateTime       @default(now()) @map("created_at")
+  resetTokenHash      String?        @map("reset_token_hash")
   updatedAt           DateTime       @updatedAt @map("updated_at")
-
+  username            String?        @unique
+  websiteUrl          String?        @map("website_url")
+  avatarFilename      String?        @map("avatar_filename")
+  commentLikes        CommentLike[]
+  comments            Comment[]
+  followingRel        Follow[]       @relation("FollowSource")
+  followersRel        Follow[]       @relation("FollowTarget")
+  likes               Like[]
+  posts               Post[]
   refreshTokens       RefreshToken[]
+  statusViews         StatusView[]   @relation("StatusViewer")
+  statuses            Status[]
 
   @@map("users")
 }
 
 model RefreshToken {
   id        String    @id @default(uuid())
+  createdAt DateTime  @default(now()) @map("created_at")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
   tokenHash String    @unique @map("token_hash")
   userId    String    @map("user_id")
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
 
   @@map("refresh_tokens")
+}
+
+model Follow {
+  id          String       @id @default(uuid())
+  followerId  String       @map("follower_id")
+  followingId String       @map("following_id")
+  status      FollowStatus @default(active)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @map("updated_at")
+  follower    User         @relation("FollowSource", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User         @relation("FollowTarget", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId, status])
+  @@index([followerId, status])
+  @@map("follows")
+}
+
+model Post {
+  id           String                   @id @default(uuid())
+  userId       String                   @map("user_id")
+  caption      String?
+  privacy      PostPrivacy              @default(public)
+  likeCount    Int                      @default(0) @map("like_count")
+  commentCount Int                      @default(0) @map("comment_count")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  searchVector Unsupported("tsvector")? @map("search_vector")
+  comments     Comment[]
+  likes        Like[]
+  hashtags     PostHashtag[]
+  media        PostMedia[]
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([privacy, createdAt])
+  @@index([searchVector], map: "posts_search_idx", type: Gin)
+  @@map("posts")
+}
+
+model PostMedia {
+  id        String    @id @default(uuid())
+  postId    String    @map("post_id")
+  filename  String
+  mediaUrl  String    @map("media_url")
+  mediaType MediaType @map("media_type")
+  order     Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at")
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_media")
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@map("likes")
+}
+
+model Comment {
+  id           String        @id @default(uuid())
+  postId       String        @map("post_id")
+  userId       String        @map("user_id")
+  text         String
+  likeCount    Int           @default(0) @map("like_count")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  commentLikes CommentLike[]
+  post         Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("comments")
+}
+
+model CommentLike {
+  id        String   @id @default(uuid())
+  commentId String   @map("comment_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@map("comment_likes")
+}
+
+model Status {
+  id        String       @id @default(uuid())
+  userId    String       @map("user_id")
+  filename  String
+  mediaUrl  String       @map("media_url")
+  mediaType MediaType    @map("media_type")
+  caption   String?
+  privacy   PostPrivacy  @default(public)
+  viewCount Int          @default(0) @map("view_count")
+  createdAt DateTime     @default(now()) @map("created_at")
+  expiresAt DateTime     @default(dbgenerated("(now() + '24:00:00'::interval)")) @map("expires_at")
+  views     StatusView[]
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([privacy, expiresAt])
+  @@map("statuses")
+}
+
+model StatusView {
+  statusId String   @map("status_id")
+  viewerId String   @map("viewer_id")
+  viewedAt DateTime @default(now()) @map("viewed_at")
+  status   Status   @relation(fields: [statusId], references: [id], onDelete: Cascade)
+  viewer   User     @relation("StatusViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@id([statusId, viewerId])
+  @@index([viewerId])
+  @@map("status_views")
+}
+
+model ApiCache {
+  cacheKey String   @id @map("cache_key")
+  data     Json
+  cachedAt DateTime @default(now()) @map("cached_at")
+
+  @@map("api_cache")
+}
+
+model Hashtag {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  postCount Int           @default(0) @map("post_count")
+  posts     PostHashtag[]
+
+  @@map("hashtags")
+}
+
+model PostHashtag {
+  postId    String  @map("post_id")
+  hashtagId Int     @map("hashtag_id")
+  hashtag   Hashtag @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+  post      Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([postId, hashtagId])
+  @@map("post_hashtags")
+}
+
+model playing_with_neon {
+  id    Int    @id @default(autoincrement())
+  name  String
+  value Float? @db.Real
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum FollowStatus {
+  active
+  pending
+}
+
+enum PostPrivacy {
+  public
+  followers
+  only_me
+}
+
+enum MediaType {
+  image
+  video
 }

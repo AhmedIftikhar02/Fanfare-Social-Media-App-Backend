@@ -1,7 +1,10 @@
+// src/modules/users/users.service.js
+
 const prisma = require('../../database/prisma');
 const { hashPassword } = require('../../utils/password');
 const AppError = require('../../utils/AppError');
 const { getPagination, buildPaginationMeta } = require('../../utils/paginate');
+const { deleteAvatarFile } = require('../../middlewares/upload'); // ← ADDED
 
 // ─── Shared Sanitizer ─────────────────────────────────────────────────────────
 
@@ -57,10 +60,23 @@ exports.updateProfile = async (userId, data) => {
   return sanitizeUser(user);
 };
 
-exports.updateAvatar = async (userId, avatarUrl) => {
+// UPDATED: Now clears disk before executing database fields update
+exports.updateAvatar = async (userId, avatarUrl, avatarFilename) => {
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { avatarFilename: true },
+  });
+
+  if (current?.avatarFilename) {
+    deleteAvatarFile(current.avatarFilename);
+  }
+
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { avatarUrl: avatarUrl },
+    data: { 
+      avatarUrl, 
+      avatarFilename 
+    },
   });
   return sanitizeUser(user);
 };
@@ -85,7 +101,6 @@ exports.getByUsername = async (username, requesterId) => {
 
   const safe = sanitizeUser(user);
 
-  // Private account restrictions
   if (user.isPrivate && user.id !== requesterId) {
     return {
       id: safe.id,
@@ -117,7 +132,7 @@ exports.searchUsers = async (query, requesterId, rawQuery) => {
     prisma.user.findMany({
       where: {
         AND: [
-          { id: { not: requesterId } }, // exclude self from search
+          { id: { not: requesterId } },
           {
             OR: [
               { username: { contains: query.trim(), mode: 'insensitive' } },

@@ -79,12 +79,65 @@ const swaggerDefinition = {
           message: { type: 'string', example: 'Invalid email or password' },
         },
       },
+      // ─── ADD NOTIFICATION SCHEMA ───────────────────────────────────────────
+      Notification: {
+        type: 'object',
+        properties: {
+          id:        { type: 'string', format: 'uuid' },
+          type: {
+            type: 'string',
+            enum: ['like', 'comment', 'follow', 'follow_request', 'follow_accept', 'comment_like'],
+          },
+          isRead:    { type: 'boolean' },
+          createdAt: { type: 'string', format: 'date-time' },
+          sender: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id:        { type: 'string' },
+              username:  { type: 'string' },
+              fullName:  { type: 'string', nullable: true },
+              avatarUrl: { type: 'string', nullable: true },
+            },
+          },
+          post: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id: { type: 'string' },
+              firstMedia: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  mediaUrl:  { type: 'string' },
+                  mediaType: { type: 'string', enum: ['image', 'video'] },
+                },
+              },
+            },
+          },
+          comment: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id:   { type: 'string' },
+              text: { type: 'string' },
+            },
+          },
+        },
+      },
     },
   },
   tags: [
-    { name: 'Health', description: 'Service health checks' },
-    { name: 'Auth', description: 'Registration, login, and token management' },
-    { name: 'Users', description: 'User profile and admin user management' },
+    { name: 'Health', description: 'Server health check' },
+    { name: 'Auth', description: 'Authentication — email/password + Firebase' },
+    { name: 'Users', description: 'User profiles, search, settings' },
+    { name: 'Follow', description: 'Follow / unfollow, requests, followers & following lists' },
+    { name: 'Posts', description: 'Posts feed, likes, comments, comment likes' },
+    { name: 'Statuses', description: 'Stories — 24-hour expiring media' },
+    { name: 'Sports', description: 'Live football scores and match proxy endpoints (cached layers)' },
+    { name: 'News', description: 'Breaking news headlines (proxied from Currents API, cached)' },     
+    { name: 'Search', description: 'Search users, posts, and hashtags via GIN indices' },
+    { name: 'Notifications', description: 'In-app notification system tracking activities' },
   ],
 };
 

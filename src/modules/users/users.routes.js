@@ -3,6 +3,8 @@ const controller = require('./users.controller');
 const validate = require('../../middlewares/validate');
 const authenticate = require('../../middlewares/authenticate');
 const authorize = require('../../middlewares/authorize');
+const { uploadAvatar, processAvatar } = require('../../middlewares/upload');
+
 const {
   updateProfileSchema,
   updateAvatarSchema,
@@ -71,34 +73,33 @@ router.delete('/me', controller.deleteMe);
 
 /**
  * @swagger
- * {
- * "/users/me/avatar": {
- * "put": {
- * "summary": "Update avatar URL",
- * "tags": ["Users"],
- * "security": [{ "bearerAuth": [] }],
- * "requestBody": {
- * "required": true,
- * "content": {
- * "application/json": {
- * "schema": {
- * "type": "object",
- * "required": ["avatarUrl"],
- * "properties": {
- * "avatarUrl": { "type": "string", "example": "https://example.com/avatar.jpg" }
- * }
- * }
- * }
- * }
- * },
- * "responses": {
- * "200": { "description": "Updated user object with new avatar" }
- * }
- * }
- * }
- * }
+ * /users/me/avatar:
+ *   put:
+ *     summary: Upload a new profile picture
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - avatar
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: "Image file (JPG/PNG/WEBP, max 5 MB). Saved as 400×400 JPEG."
+ *     responses:
+ *       200:
+ *         description: Updated user object with new avatarUrl
+ *       400:
+ *         description: No file provided or invalid file type
  */
-router.put('/me/avatar', validate(updateAvatarSchema), controller.updateAvatar);
+router.put('/me/avatar', uploadAvatar, processAvatar, controller.updateAvatar);
+
 
 /**
  * @swagger

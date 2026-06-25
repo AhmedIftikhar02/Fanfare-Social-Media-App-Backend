@@ -1,3 +1,5 @@
+// src/modules/users/users.controller.js
+
 const catchAsync = require('../../utils/catchAsync');
 const usersService = require('./users.service');
 
@@ -20,8 +22,13 @@ exports.updateProfile = catchAsync(async (req, res) => {
   res.status(200).json({ status: 'success', data: { user } });
 });
 
+// UPDATED: Now receives multi-part metadata parsing properties safely
 exports.updateAvatar = catchAsync(async (req, res) => {
-  const user = await usersService.updateAvatar(req.user.id, req.body.avatarUrl);
+  const user = await usersService.updateAvatar(
+    req.user.id,
+    req.avatarUrl,
+    req.avatarFilename
+  );
   res.status(200).json({ status: 'success', data: { user } });
 });
 

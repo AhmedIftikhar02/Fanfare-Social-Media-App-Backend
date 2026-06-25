@@ -12,4 +12,12 @@ module.exports = {
   cors: {
     origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
   },
+  // ─── Sports & News Proxy Credentials ───────────────────────────────────────
+  rapidapi: {
+    key:  process.env.RAPIDAPI_KEY  || '',
+    host: process.env.RAPIDAPI_HOST || 'free-api-live-football-data.p.rapidapi.com',
+  },
+  currents: {
+    key: process.env.CURRENTS_API_KEY || '',
+  },
 };
