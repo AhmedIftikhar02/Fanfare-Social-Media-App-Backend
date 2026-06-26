@@ -8,6 +8,40 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum FollowStatus {
+  active
+  pending
+}
+
+enum PostPrivacy {
+  public
+  followers
+  only_me
+}
+
+enum MediaType {
+  image
+  video
+}
+
+enum NotificationType {
+  like
+  comment
+  follow
+  follow_request
+  follow_accept
+  comment_like
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
 model User {
   id                  String         @id @default(uuid())
   email               String?        @unique
@@ -32,15 +66,19 @@ model User {
   username            String?        @unique
   websiteUrl          String?        @map("website_url")
   avatarFilename      String?        @map("avatar_filename")
-  commentLikes        CommentLike[]
-  comments            Comment[]
-  followingRel        Follow[]       @relation("FollowSource")
-  followersRel        Follow[]       @relation("FollowTarget")
-  likes               Like[]
-  posts               Post[]
-  refreshTokens       RefreshToken[]
-  statusViews         StatusView[]   @relation("StatusViewer")
-  statuses            Status[]
+
+  // Relations
+  commentLikes          CommentLike[]
+  comments              Comment[]
+  followingRel          Follow[]       @relation("FollowSource")
+  followersRel          Follow[]       @relation("FollowTarget")
+  likes                 Like[]
+  posts                 Post[]
+  refreshTokens         RefreshToken[]
+  statusViews           StatusView[]   @relation("StatusViewer")
+  statuses              Status[]
+  receivedNotifications Notification[] @relation("ReceivedNotifications")
+  sentNotifications     Notification[] @relation("SentNotifications")
 
   @@map("users")
 }
@@ -63,7 +101,7 @@ model Follow {
   followingId String       @map("following_id")
   status      FollowStatus @default(active)
   createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @map("updated_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")  // ← FIX: added @updatedAt
   follower    User         @relation("FollowSource", fields: [followerId], references: [id], onDelete: Cascade)
   following   User         @relation("FollowTarget", fields: [followingId], references: [id], onDelete: Cascade)
 
@@ -74,25 +112,34 @@ model Follow {
 }
 
 model Post {
-  id           String                   @id @default(uuid())
-  userId       String                   @map("user_id")
-  caption      String?
-  privacy      PostPrivacy              @default(public)
-  likeCount    Int                      @default(0) @map("like_count")
-  commentCount Int                      @default(0) @map("comment_count")
-  createdAt    DateTime                 @default(now()) @map("created_at")
-  updatedAt    DateTime                 @updatedAt @map("updated_at")
-  searchVector Unsupported("tsvector")? @map("search_vector")
-  comments     Comment[]
-  likes        Like[]
-  hashtags     PostHashtag[]
-  media        PostMedia[]
-  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String                   @id @default(uuid())
+  userId        String                   @map("user_id")
+  caption       String?
+  privacy       PostPrivacy              @default(public)
+  likeCount     Int                      @default(0) @map("like_count")
+  commentCount  Int                      @default(0) @map("comment_count")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+  searchVector  Unsupported("tsvector")? @map("search_vector")
+
+  shareCount   Int                      @default(0) @map("share_count")         
+  isReel       Boolean                  @default(false) @map("is_reel")      
+  sharedFromId String?                  @map("shared_from_id")
+  sharedFrom   Post?                    @relation("PostShares", fields: [sharedFromId], references: [id], onDelete: SetNull)
+  shares       Post[]                   @relation("PostShares")
+
+  comments      Comment[]
+  likes         Like[]
+  hashtags      PostHashtag[]
+  media         PostMedia[]
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
 
   @@index([userId])
   @@index([createdAt])
   @@index([privacy, createdAt])
   @@index([searchVector], map: "posts_search_idx", type: Gin)
+  @@index([isReel, privacy, createdAt(sort: Desc)])
   @@map("posts")
 }
 
@@ -124,16 +171,17 @@ model Like {
 }
 
 model Comment {
-  id           String        @id @default(uuid())
-  postId       String        @map("post_id")
-  userId       String        @map("user_id")
-  text         String
-  likeCount    Int           @default(0) @map("like_count")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  commentLikes CommentLike[]
-  post         Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String        @id @default(uuid())
+  postId        String        @map("post_id")
+  userId        String        @map("user_id")
+  text          String
+  likeCount     Int           @default(0) @map("like_count")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  commentLikes  CommentLike[]
+  post          Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
 
   @@index([postId])
   @@map("comments")
@@ -153,18 +201,18 @@ model CommentLike {
 }
 
 model Status {
-  id        String       @id @default(uuid())
-  userId    String       @map("user_id")
+  id        String      @id @default(uuid())
+  userId    String      @map("user_id")
   filename  String
-  mediaUrl  String       @map("media_url")
-  mediaType MediaType    @map("media_type")
+  mediaUrl  String      @map("media_url")
+  mediaType MediaType   @map("media_type")
   caption   String?
-  privacy   PostPrivacy  @default(public)
-  viewCount Int          @default(0) @map("view_count")
-  createdAt DateTime     @default(now()) @map("created_at")
-  expiresAt DateTime     @default(dbgenerated("(now() + '24:00:00'::interval)")) @map("expires_at")
+  privacy   PostPrivacy @default(public)
+  viewCount Int         @default(0) @map("view_count")
+  createdAt DateTime    @default(now()) @map("created_at")
+  expiresAt DateTime    @default(dbgenerated("(now() + '24:00:00'::interval)")) @map("expires_at")
   views     StatusView[]
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -211,29 +259,28 @@ model PostHashtag {
   @@map("post_hashtags")
 }
 
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String           @map("recipient_id")
+  senderId    String?          @map("sender_id")
+  type        NotificationType
+  postId      String?          @map("post_id")
+  commentId   String?          @map("comment_id")
+  isRead      Boolean          @default(false) @map("is_read")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  recipient User     @relation("ReceivedNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender    User?    @relation("SentNotifications",     fields: [senderId],    references: [id], onDelete: SetNull)
+  post      Post?    @relation(fields: [postId],    references: [id], onDelete: Cascade)
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, isRead])
+  @@index([recipientId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
 model playing_with_neon {
   id    Int    @id @default(autoincrement())
   name  String
   value Float? @db.Real
-}
-
-enum Role {
-  USER
-  ADMIN
-}
-
-enum FollowStatus {
-  active
-  pending
-}
-
-enum PostPrivacy {
-  public
-  followers
-  only_me
-}
-
-enum MediaType {
-  image
-  video
 }

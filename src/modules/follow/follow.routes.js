@@ -1,6 +1,8 @@
-const express = require('express');
+// src/modules/follow/follow.routes.js
+
+const express    = require('express');
 const controller = require('./follow.controller');
-const validate = require('../../middlewares/validate');
+const validate   = require('../../middlewares/validate');
 const authenticate = require('../../middlewares/authenticate');
 const {
   userIdParamSchema,
@@ -9,26 +11,23 @@ const {
 
 const router = express.Router();
 
-// All follow relationships endpoints require active session tokens
 router.use(authenticate);
 
-// ─── Incoming Requests (Must reside above /:userId path blocks) ───────────────
+// ─── Incoming Requests (must be above /:userId) ───────────────────────────────
 
 /**
  * @swagger
  * {
  * "/follow/requests": {
  * "get": {
- * "summary": "Get my incoming pending follow requests (for private accounts)",
+ * "summary": "Get my incoming pending follow requests",
  * "tags": ["Follow"],
  * "security": [{ "bearerAuth": [] }],
  * "parameters": [
  * { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
  * { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 20 } }
  * ],
- * "responses": {
- * "200": { "description": "List of pending follow requests with pagination matching profile details" }
- * }
+ * "responses": { "200": { "description": "List of pending follow requests" } }
  * }
  * }
  * }
@@ -44,12 +43,12 @@ router.get('/requests', controller.getFollowRequests);
  * "tags": ["Follow"],
  * "security": [{ "bearerAuth": [] }],
  * "parameters": [
- * { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Follow request primary key ID" }
+ * { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } }
  * ],
  * "responses": {
- * "200": { "description": "Request approved successfully" },
- * "403": { "description": "Not authorized to modify this entity" },
- * "404": { "description": "Request context identifier not found" }
+ * "200": { "description": "Request approved" },
+ * "403": { "description": "Not authorized" },
+ * "404": { "description": "Not found" }
  * }
  * }
  * }
@@ -70,12 +69,12 @@ router.put(
  * "tags": ["Follow"],
  * "security": [{ "bearerAuth": [] }],
  * "parameters": [
- * { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Follow request primary key ID" }
+ * { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } }
  * ],
  * "responses": {
- * "200": { "description": "Request rejected successfully" },
- * "403": { "description": "Not authorized to modify this entity" },
- * "404": { "description": "Request context identifier not found" }
+ * "200": { "description": "Request rejected" },
+ * "403": { "description": "Not authorized" },
+ * "404": { "description": "Not found" }
  * }
  * }
  * }
@@ -87,7 +86,7 @@ router.put(
   controller.rejectFollowRequest
 );
 
-// ─── Verification Status Utility ─────────────────────────────────────────────
+// ─── Status Check ─────────────────────────────────────────────────────────────
 
 /**
  * @swagger
@@ -100,9 +99,7 @@ router.put(
  * "parameters": [
  * { "in": "path", "name": "userId", "required": true, "schema": { "type": "string", "format": "uuid" } }
  * ],
- * "responses": {
- * "200": { "description": "Follow status output — none | active | pending | self" }
- * }
+ * "responses": { "200": { "description": "Status: none | active | pending | self" } }
  * }
  * }
  * }
@@ -113,7 +110,7 @@ router.get(
   controller.getFollowStatus
 );
 
-// ─── Network Relations Graph lists ───────────────────────────────────────────
+// ─── Follower / Following Lists ───────────────────────────────────────────────
 
 /**
  * @swagger
@@ -128,10 +125,7 @@ router.get(
  * { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
  * { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 20 } }
  * ],
- * "responses": {
- * "200": { "description": "Paginated array of follower profiles mapping metrics" },
- * "403": { "description": "Private account access restrictions applied" }
- * }
+ * "responses": { "200": { "description": "Paginated followers" } }
  * }
  * }
  * }
@@ -155,10 +149,7 @@ router.get(
  * { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
  * { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 20 } }
  * ],
- * "responses": {
- * "200": { "description": "Paginated array of target following profiles details" },
- * "403": { "description": "Private account access restrictions applied" }
- * }
+ * "responses": { "200": { "description": "Paginated following" } }
  * }
  * }
  * }
@@ -169,7 +160,7 @@ router.get(
   controller.getFollowing
 );
 
-// ─── Mutable Operations (Follow / Unfollow action handles) ─────────────────────
+// ─── Follow / Unfollow ────────────────────────────────────────────────────────
 
 /**
  * @swagger
@@ -183,22 +174,22 @@ router.get(
  * { "in": "path", "name": "userId", "required": true, "schema": { "type": "string", "format": "uuid" } }
  * ],
  * "responses": {
- * "201": { "description": "Relationship state built (or state locked to pending if profile is private)" },
- * "400": { "description": "Self operational restrictions matching requester ID identity" },
- * "404": { "description": "Target profile system mapping entity details not found" },
- * "409": { "description": "Active state or pending payload state conflicts duplicate error" }
+ * "201": { "description": "Followed (or request sent if private)" },
+ * "400": { "description": "Cannot follow yourself" },
+ * "404": { "description": "User not found" },
+ * "409": { "description": "Already following or request pending" }
  * }
  * },
  * "delete": {
- * "summary": "Unfollow a user (or cancel a pending follow request)",
+ * "summary": "Unfollow a user or cancel pending request",
  * "tags": ["Follow"],
  * "security": [{ "bearerAuth": [] }],
  * "parameters": [
  * { "in": "path", "name": "userId", "required": true, "schema": { "type": "string", "format": "uuid" } }
  * ],
  * "responses": {
- * "200": { "description": "Connection dropped and network state counters decremented safely" },
- * "404": { "description": "No active data relationship existing with requested targets" }
+ * "200": { "description": "Unfollowed" },
+ * "404": { "description": "Not following this user" }
  * }
  * }
  * }
@@ -216,4 +207,4 @@ router.delete(
   controller.unfollowUser
 );
 
-module.exports = router;   
+module.exports = router;
