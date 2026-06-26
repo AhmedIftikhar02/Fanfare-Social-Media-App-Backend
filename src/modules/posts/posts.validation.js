@@ -37,11 +37,25 @@ const userIdParamSchema = z.object({
   userId: z.string().uuid('Invalid user ID'),
 });
 
+// ─── Create Reel ─────────────────────────────────────────────────────────────
+const createReelSchema = z.object({
+  caption: z.string().max(2200, 'Caption max 2200 characters').optional(),
+  privacy: z.enum(['public', 'followers', 'only_me']).default('public'),
+});
+
+// ─── Share Post ───────────────────────────────────────────────────────────────
+const sharePostSchema = z.object({
+  caption: z.string().max(2200, 'Caption max 2200 characters').optional(),
+  privacy: z.enum(['public', 'followers', 'only_me']).default('public'),
+});
+
 module.exports = {
   createPostSchema,
   updatePostSchema,
   addCommentSchema,
   postIdParamSchema,
   commentIdParamSchema,
+  createReelSchema,
+  sharePostSchema,
   userIdParamSchema,
 };

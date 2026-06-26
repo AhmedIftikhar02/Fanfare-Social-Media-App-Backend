@@ -2,8 +2,9 @@ const prisma = require('../../database/prisma');
 const AppError = require('../../utils/AppError');
 const { deletePostFile } = require('../../middlewares/upload');
 const { getPagination, buildPaginationMeta } = require('../../utils/paginate');
-// ─── ADD NOTIFICATION UTILITY IMPORT ─────────────────────────────────────────
+const { processMentions } = require('../../utils/mention');
 const { createNotification } = require('../../utils/notify');
+
 
 const parseHashtags = (caption) => {
   if (!caption) return [];
@@ -32,64 +33,110 @@ const linkHashtagsToPost = async (tx, postId, caption) => {
   }
 };
 
-// ─── Helper: shape a post for API response ────────────────────────────────────
 const formatPost = (post, requesterId) => ({
-  id: post.id,
-  caption: post.caption,
-  privacy: post.privacy,
-  likeCount: post.likeCount,
+  id:           post.id,
+  caption:      post.caption,
+  privacy:      post.privacy,
+  likeCount:    post.likeCount,
   commentCount: post.commentCount,
-  createdAt: post.createdAt,
-  updatedAt: post.updatedAt,
+  shareCount:   post.shareCount,
+  isReel:       post.isReel,   
+  createdAt:    post.createdAt,
+  updatedAt:    post.updatedAt,
   isLiked: post.likes ? post.likes.some((l) => l.userId === requesterId) : false,
   media: (post.media || [])
     .sort((a, b) => a.order - b.order)
     .map((m) => ({
-      id: m.id,
-      mediaUrl: m.mediaUrl,
+      id:        m.id,
+      mediaUrl:  m.mediaUrl,
       mediaType: m.mediaType,
-      order: m.order,
+      order:     m.order,
     })),
   user: post.user
     ? {
-        id: post.user.id,
-        username: post.user.username,
-        fullName: post.user.fullName,
+        id:        post.user.id,
+        username:  post.user.username,
+        fullName:  post.user.fullName,
         avatarUrl: post.user.avatarUrl,
         isPrivate: post.user.isPrivate,
       }
     : undefined,
+  sharedFrom: post.sharedFrom
+    ? {
+        id:      post.sharedFrom.id,
+        caption: post.sharedFrom.caption,
+        user: {
+          id:        post.sharedFrom.user.id,
+          username:  post.sharedFrom.user.username,
+          fullName:  post.sharedFrom.user.fullName,
+          avatarUrl: post.sharedFrom.user.avatarUrl,
+        },
+        firstMedia: post.sharedFrom.media && post.sharedFrom.media.length > 0
+          ? {
+              mediaUrl:  post.sharedFrom.media[0].mediaUrl,
+              mediaType: post.sharedFrom.media[0].mediaType,
+            }
+          : null,
+      }
+    : null,
 });
 
-// ─── Post selector (reused in multiple queries) ───────────────────────────────
 const POST_SELECT = {
-  id: true,
-  caption: true,
-  privacy: true,
-  likeCount: true,
+  id:           true,
+  caption:      true,
+  privacy:      true,
+  likeCount:    true,
   commentCount: true,
-  createdAt: true,
-  updatedAt: true,
+  shareCount:   true,  
+  isReel:       true,   
+  sharedFromId: true,  
+  createdAt:    true,
+  updatedAt:    true,
   user: {
     select: {
-      id: true,
-      username: true,
-      fullName: true,
+      id:        true,
+      username:  true,
+      fullName:  true,
       avatarUrl: true,
       isPrivate: true,
     },
   },
   media: {
     select: {
-      id: true,
-      mediaUrl: true,
+      id:        true,
+      mediaUrl:  true,
       mediaType: true,
-      order: true,
+      order:     true,
     },
     orderBy: { order: 'asc' },
   },
   likes: {
     select: { userId: true },
+  },
+  sharedFrom: {
+    select: {
+      id:      true,
+      caption: true,
+      privacy: true,
+      user: {
+        select: {
+          id:        true,
+          username:  true,
+          fullName:  true,
+          avatarUrl: true,
+        },
+      },
+      media: {
+        select: {
+          id:        true,
+          mediaUrl:  true,
+          mediaType: true,
+          order:     true,
+        },
+        orderBy: { order: 'asc' },
+        take: 1, // Only first media for preview in share card
+      },
+    },
   },
 };
 
@@ -126,12 +173,69 @@ exports.createPost = async (userId, body, processedFiles) => {
     });
 
     await linkHashtagsToPost(tx, newPost.id, caption);
+    await processMentions(tx, {
+      text:     caption,
+      senderId: userId,
+      postId:   newPost.id,
+    });
+
 
     return newPost;
   });
 
   return formatPost(post, userId);
 };
+
+
+// ─── Create Reel ──────────────────────────────────────────────────────────────
+exports.createReel = async (userId, body, reelFile) => {
+  if (!reelFile) {
+    throw new AppError('A video file is required for reels', 400);
+  }
+
+  const { caption, privacy = 'public' } = body;
+
+  const post = await prisma.$transaction(async (tx) => {
+    const newPost = await tx.post.create({
+      data: {
+        userId,
+        caption: caption || null,
+        privacy,
+        isReel:  true,   // ← flag this as a reel
+        media: {
+          create: [{
+            filename:  reelFile.filename,
+            mediaUrl:  reelFile.mediaUrl,
+            mediaType: 'video',
+            order:     0,
+          }],
+        },
+      },
+      select: POST_SELECT,
+    });
+
+    // Increment user post count
+    await tx.user.update({
+      where: { id: userId },
+      data:  { postCount: { increment: 1 } },
+    });
+
+    // Link hashtags from caption (reuse existing helper)
+    await linkHashtagsToPost(tx, newPost.id, caption);
+    await processMentions(tx, {
+      text:     caption,
+      senderId: userId,
+      postId:   newPost.id,
+    });
+
+    return newPost;
+  });
+
+  return formatPost(post, userId);
+};
+
+
+
 
 // ─── Get Feed ─────────────────────────────────────────────────────────────────
 exports.getFeed = async (requesterId, rawQuery) => {
@@ -197,6 +301,32 @@ exports.getExplore = async (requesterId, rawQuery) => {
   return {
     posts: posts.map((p) => formatPost(p, requesterId)),
     meta: buildPaginationMeta(page, limit, totalItems),
+  };
+};
+
+// ─── Get Reel Feed (public reels, newest first) ───────────────────────────────
+exports.getReelFeed = async (requesterId, rawQuery) => {
+  const { page, limit, skip } = getPagination(rawQuery);
+
+  const [posts, totalItems] = await Promise.all([
+    prisma.post.findMany({
+      where: {
+        isReel:  true,
+        privacy: 'public',
+      },
+      select:  POST_SELECT,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.post.count({
+      where: { isReel: true, privacy: 'public' },
+    }),
+  ]);
+
+  return {
+    reels: posts.map((p) => formatPost(p, requesterId)),
+    meta:  buildPaginationMeta(page, limit, totalItems),
   };
 };
 
@@ -305,6 +435,80 @@ exports.deletePost = async (postId, userId) => {
   });
 
   return { message: 'Post deleted successfully' };
+};
+
+// ─── Share Post ───────────────────────────────────────────────────────────────
+exports.sharePost = async (originalPostId, userId, body) => {
+  const { caption, privacy = 'public' } = body;
+
+  // Load original post to check it exists and is shareable
+  const originalPost = await prisma.post.findUnique({
+    where:  { id: originalPostId },
+    select: { id: true, userId: true, privacy: true },
+  });
+  if (!originalPost) throw new AppError('Post not found', 404);
+
+  // Cannot share a private (only_me) post
+  if (originalPost.privacy === 'only_me') {
+    throw new AppError('This post cannot be shared', 403);
+  }
+
+  // Cannot share a followers-only post if not following the author
+  if (originalPost.privacy === 'followers' && originalPost.userId !== userId) {
+    const isFollower = await prisma.follow.findUnique({
+      where: {
+        followerId_followingId: { followerId: userId, followingId: originalPost.userId },
+      },
+    });
+    if (!isFollower || isFollower.status !== 'active') {
+      throw new AppError('You cannot share a post that is visible to followers only', 403);
+    }
+  }
+
+  const sharedPost = await prisma.$transaction(async (tx) => {
+    // Create a new Post row that references the original
+    const newPost = await tx.post.create({
+      data: {
+        userId,
+        caption:      caption || null,
+        privacy,
+        isReel:       false,
+        sharedFromId: originalPostId,
+        // media[] intentionally empty — no files uploaded for a share
+      },
+      select: POST_SELECT,
+    });
+
+    // Increment sharer's post count
+    await tx.user.update({
+      where: { id: userId },
+      data:  { postCount: { increment: 1 } },
+    });
+
+    // Increment original post's share count
+    await tx.post.update({
+      where: { id: originalPostId },
+      data:  { shareCount: { increment: 1 } },
+    });
+
+    // Notify original post author (skip self-share)
+    await createNotification(tx, {
+      recipientId: originalPost.userId,
+      senderId:    userId,
+      type:        'share',
+      postId:      originalPostId,
+    });
+    
+    await processMentions(tx, {
+      text:     caption,
+      senderId: userId,
+      postId:   newPost.id,
+    });
+
+    return newPost;
+  });
+
+  return formatPost(sharedPost, userId);
 };
 
 // ─── Get User Posts (profile grid) ───────────────────────────────────────────
@@ -467,6 +671,12 @@ exports.addComment = async (postId, userId, text) => {
       type:        'comment',
       postId,
       commentId:   newComment.id,
+    });
+
+    await processMentions(tx, {
+      text:     caption,
+      senderId: userId,
+      postId:   newPost.id,
     });
 
     return newComment;

@@ -2,7 +2,7 @@ const express      = require('express');
 const controller   = require('./posts.controller');
 const validate     = require('../../middlewares/validate');
 const authenticate = require('../../middlewares/authenticate');
-const { uploadPostMedia, processPostFiles } = require('../../middlewares/upload');
+const { uploadPostMedia, processPostFiles, uploadReelMedia, processReelFile  } = require('../../middlewares/upload');
 
 const {
   createPostSchema,
@@ -10,6 +10,8 @@ const {
   addCommentSchema,
   postIdParamSchema,
   commentIdParamSchema,
+  createReelSchema,
+  sharePostSchema,
   userIdParamSchema,
 } = require('./posts.validation');
 
@@ -61,6 +63,106 @@ router.get('/feed', controller.getFeed);
  * }
  */
 router.get('/explore', controller.getExplore);
+
+
+// ─── Reels ────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * {
+ * "/posts/reels": {
+ * "post": {
+ * "summary": "Post a reel (single video, max 60s / 100 MB)",
+ * "tags": ["Posts"],
+ * "security": [{ "bearerAuth": [] }],
+ * "requestBody": {
+ * "required": true,
+ * "content": {
+ * "multipart/form-data": {
+ * "schema": {
+ * "type": "object",
+ * "required": ["video"],
+ * "properties": {
+ * "video": { "type": "string", "format": "binary", "description": "Single video file (.mp4 recommended)" },
+ * "caption": { "type": "string", "maxLength": 2200 },
+ * "privacy": { "type": "string", "enum": ["public", "followers", "only_me"], "default": "public" }
+ * }
+ * }
+ * }
+ * }
+ * },
+ * "responses": {
+ * "201": { "description": "Reel created successfully." },
+ * "400": { "description": "No video provided or wrong file type." }
+ * }
+ * },
+ * "get": {
+ * "summary": "Get paginated public reel feed",
+ * "tags": ["Posts"],
+ * "security": [{ "bearerAuth": [] }],
+ * "parameters": [
+ * { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+ * { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } }
+ * ],
+ * "responses": {
+ * "200": { "description": "Paginated reels returned." }
+ * }
+ * }
+ * }
+ * }
+ */
+router.post(
+  '/reels',
+  uploadReelMedia,
+  processReelFile,
+  validate(createReelSchema, 'body'),
+  controller.createReel
+);
+
+router.get('/reels', controller.getReelFeed);
+
+// ─── Share a Post ─────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * {
+ * "/posts/{postId}/share": {
+ * "post": {
+ * "summary": "Share a post or reel to your own profile",
+ * "tags": ["Posts"],
+ * "security": [{ "bearerAuth": [] }],
+ * "parameters": [
+ * { "in": "path", "name": "postId", "required": true, "schema": { "type": "string", "format": "uuid" } }
+ * ],
+ * "requestBody": {
+ * "required": false,
+ * "content": {
+ * "application/json": {
+ * "schema": {
+ * "type": "object",
+ * "properties": {
+ * "caption": { "type": "string", "maxLength": 2200, "description": "Optional sharer comment on top of the share card" },
+ * "privacy": { "type": "string", "enum": ["public", "followers", "only_me"], "default": "public" }
+ * }
+ * }
+ * }
+ * }
+ * },
+ * "responses": {
+ * "201": { "description": "Post shared to your profile." },
+ * "403": { "description": "Post is private and cannot be shared." },
+ * "404": { "description": "Original post not found." }
+ * }
+ * }
+ * }
+ * }
+ */
+router.post(
+  '/:postId/share',
+  validate(postIdParamSchema, 'params'),
+  validate(sharePostSchema, 'body'),
+  controller.sharePost
+);
 
 // ─── User Posts Grid ──────────────────────────────────────────────────────────
 

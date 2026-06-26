@@ -149,6 +149,58 @@ const processAvatar = async (req, _res, next) => {
 
 const deleteAvatarFile = (filename) => deleteUploadedFile('avatars', filename);
 
+// ─── Reel Upload (single video, max 100 MB) ───────────────────────────────────
+
+const REEL_MAX_SIZE = 100 * 1024 * 1024; // 100 MB
+
+const reelStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = process.env.VERCEL
+      ? '/tmp/uploads/posts'
+      : path.join(process.cwd(), 'uploads', 'posts');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext  = path.extname(file.originalname).toLowerCase() || '.mp4';
+    const name = `reel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+    cb(null, name);
+  },
+});
+
+const reelFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('video/')) {
+    cb(null, true);
+  } else {
+    cb(new AppError('Reels accept video files only', 400), false);
+  }
+};
+
+const uploadReelMedia = multer({
+  storage: reelStorage,
+  fileFilter: reelFilter,
+  limits: { fileSize: REEL_MAX_SIZE, files: 1 },
+}).single('video'); // field name is "video" not "media"
+
+/**
+ * Middleware: process the uploaded reel video.
+ * Attaches req.reelFile = { filename, mediaUrl, mediaType: 'video', order: 0 }
+ */
+const processReelFile = (req, res, next) => {
+  if (!req.file) return next(new AppError('A video file is required for reels', 400));
+
+  const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  req.reelFile = {
+    filename:  req.file.filename,
+    mediaUrl:  `${baseUrl}/uploads/posts/${req.file.filename}`,
+    mediaType: 'video',
+    order:     0,
+  };
+  next();
+};
+
+
+
 module.exports = {
   uploadPostMedia,
   processPostFiles,
@@ -159,4 +211,6 @@ module.exports = {
   uploadAvatar,
   processAvatar,
   deleteAvatarFile,
-};
+  uploadReelMedia,
+  processReelFile,
+}; 

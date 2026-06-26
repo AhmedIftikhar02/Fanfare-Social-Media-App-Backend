@@ -2,26 +2,32 @@
 
 const { z } = require('zod');
 
-// Shared base for all search queries
 const baseSearchSchema = z.object({
   q:     z.string().min(1, 'Search query cannot be empty').max(100),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   page:  z.coerce.number().int().min(1).default(1),
 });
 
-// User search — same as base
-const searchUsersSchema = baseSearchSchema;
-
-// Post search — same as base
-const searchPostsSchema = baseSearchSchema;
-
-// Hashtag search — same as base
+const searchUsersSchema    = baseSearchSchema;
+const searchPostsSchema    = baseSearchSchema;
 const searchHashtagsSchema = baseSearchSchema;
 
-// Explore grid — no `q`, just pagination
 const explorePostsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(30),
   page:  z.coerce.number().int().min(1).default(1),
+});
+
+const hashtagNameParamSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Hashtag name cannot be empty')
+    .max(100)
+    .transform((val) => val.replace(/^#/, '').toLowerCase()),
+});
+
+const hashtagPostsQuerySchema = z.object({
+  page:  z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
 module.exports = {
@@ -29,4 +35,6 @@ module.exports = {
   searchPostsSchema,
   searchHashtagsSchema,
   explorePostsSchema,
+  hashtagNameParamSchema,
+  hashtagPostsQuerySchema,
 };

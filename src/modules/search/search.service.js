@@ -213,3 +213,180 @@ exports.searchHashtags = async (q, page, limit) => {
     },
   };
 };
+
+// ─── 4. Get Single Hashtag Metadata ──────────────────────────────────────────
+
+/**
+ * Returns metadata for a single hashtag by exact name.
+ * Used for the hashtag screen header (name, postCount).
+ *
+ * @param {string} name - Hashtag name (without #, already lowercased)
+ */
+exports.getHashtag = async (name) => {
+  const hashtag = await prisma.hashtag.findUnique({
+    where:  { name },
+    select: { id: true, name: true, postCount: true },
+  });
+
+  if (!hashtag) throw new AppError('Hashtag not found', 404);
+
+  return { hashtag };
+};
+
+// ─── 5. Get Posts by Hashtag ──────────────────────────────────────────────────
+
+/**
+ * Returns all public posts tagged with the given hashtag.
+ * Ordered by newest first.
+ * Only public posts are returned (followers-only and only_me excluded).
+ *
+ * @param {string} name        - Hashtag name (without #, already lowercased)
+ * @param {string} requesterId - ID of the authenticated user (for isLiked)
+ * @param {number} page        - Page number (1-based)
+ * @param {number} limit       - Items per page
+ */
+exports.getHashtagPosts = async (name, requesterId, page, limit) => {
+  const skip = (page - 1) * limit;
+
+  // Confirm hashtag exists first (gives a clean 404 vs empty array)
+  const hashtag = await prisma.hashtag.findUnique({
+    where:  { name },
+    select: { id: true, name: true, postCount: true },
+  });
+
+  if (!hashtag) throw new AppError('Hashtag not found', 404);
+
+  const [posts, totalItems] = await Promise.all([
+    prisma.post.findMany({
+      where: {
+        privacy: 'public',
+        hashtags: {
+          some: { hashtagId: hashtag.id },
+        },
+      },
+      select: {
+        id:           true,
+        caption:      true,
+        privacy:      true,
+        likeCount:    true,
+        commentCount: true,
+        shareCount:   true,
+        isReel:       true,
+        createdAt:    true,
+        updatedAt:    true,
+        user: {
+          select: {
+            id:        true,
+            username:  true,
+            fullName:  true,
+            avatarUrl: true,
+            isPrivate: true,
+          },
+        },
+        media: {
+          select: {
+            id:        true,
+            mediaUrl:  true,
+            mediaType: true,
+            order:     true,
+          },
+          orderBy: { order: 'asc' },
+        },
+        likes: {
+          where:  { userId: requesterId },
+          select: { userId: true },
+        },
+        // Include sharedFrom for completeness (shared posts can have hashtags in caption)
+        sharedFrom: {
+          select: {
+            id:      true,
+            caption: true,
+            user: {
+              select: {
+                id:        true,
+                username:  true,
+                fullName:  true,
+                avatarUrl: true,
+              },
+            },
+            media: {
+              select: { mediaUrl: true, mediaType: true, order: true },
+              orderBy: { order: 'asc' },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.post.count({
+      where: {
+        privacy: 'public',
+        hashtags: {
+          some: { hashtagId: hashtag.id },
+        },
+      },
+    }),
+  ]);
+
+  const formattedPosts = posts.map((post) => ({
+    id:           post.id,
+    caption:      post.caption,
+    privacy:      post.privacy,
+    likeCount:    post.likeCount,
+    commentCount: post.commentCount,
+    shareCount:   post.shareCount,
+    isReel:       post.isReel,
+    createdAt:    post.createdAt,
+    updatedAt:    post.updatedAt,
+    isLiked:      post.likes.length > 0,
+    media: (post.media || []).map((m) => ({
+      id:        m.id,
+      mediaUrl:  m.mediaUrl,
+      mediaType: m.mediaType,
+      order:     m.order,
+    })),
+    user: {
+      id:        post.user.id,
+      username:  post.user.username,
+      fullName:  post.user.fullName,
+      avatarUrl: post.user.avatarUrl,
+      isPrivate: post.user.isPrivate,
+    },
+    sharedFrom: post.sharedFrom
+      ? {
+          id:      post.sharedFrom.id,
+          caption: post.sharedFrom.caption,
+          user: {
+            id:        post.sharedFrom.user.id,
+            username:  post.sharedFrom.user.username,
+            fullName:  post.sharedFrom.user.fullName,
+            avatarUrl: post.sharedFrom.user.avatarUrl,
+          },
+          firstMedia: post.sharedFrom.media?.[0]
+            ? {
+                mediaUrl:  post.sharedFrom.media[0].mediaUrl,
+                mediaType: post.sharedFrom.media[0].mediaType,
+              }
+            : null,
+        }
+      : null,
+  }));
+
+  return {
+    hashtag: {
+      id:        hashtag.id,
+      name:      hashtag.name,
+      postCount: hashtag.postCount,
+    },
+    posts:     formattedPosts,
+    meta: {
+      page,
+      limit,
+      totalItems,
+      totalPages: Math.ceil(totalItems / limit),
+    },
+  };
+};

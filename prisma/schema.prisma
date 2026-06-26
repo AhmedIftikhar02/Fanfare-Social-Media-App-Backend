@@ -38,7 +38,15 @@ enum NotificationType {
   follow_request
   follow_accept
   comment_like
+  share
+  mention   
 }
+
+enum MessageMediaType {
+  image
+  video
+}
+
 
 // ─── Models ───────────────────────────────────────────────────────────────────
 
@@ -79,6 +87,9 @@ model User {
   statuses              Status[]
   receivedNotifications Notification[] @relation("ReceivedNotifications")
   sentNotifications     Notification[] @relation("SentNotifications")
+  conversationsAsA      Conversation[] @relation("ConversationA")
+  conversationsAsB      Conversation[] @relation("ConversationB")
+  sentMessages          Message[]      @relation("MessageSender")
 
   @@map("users")
 }
@@ -283,4 +294,42 @@ model playing_with_neon {
   id    Int    @id @default(autoincrement())
   name  String
   value Float? @db.Real
+}
+
+
+model Conversation {
+  id             String    @id @default(uuid())
+  participantAId String
+  participantBId String
+  lastMessageId  String?   @unique
+  lastActivityAt DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  participantA   User      @relation("ConversationA", fields: [participantAId], references: [id], onDelete: Cascade)
+  participantB   User      @relation("ConversationB", fields: [participantBId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  lastMessage    Message?  @relation("LastMessage", fields: [lastMessageId], references: [id])
+
+  @@unique([participantAId, participantBId])
+  @@index([participantAId, lastActivityAt])
+  @@index([participantBId, lastActivityAt])
+}
+
+model Message {
+  id             String            @id @default(uuid())
+  conversationId String
+  senderId       String
+  text           String?
+  mediaUrl       String?
+  mediaType      MessageMediaType?
+  isRead         Boolean           @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime          @default(now())
+
+  conversation         Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender               User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  lastMessageInConv    Conversation? @relation("LastMessage")
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
 }

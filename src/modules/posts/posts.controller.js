@@ -82,3 +82,21 @@ exports.unlikeComment = catchAsync(async (req, res) => {
   );
   res.status(200).json({ status: 'success', data: result });
 });
+
+// ─── Create Reel ─────────────────────────────────────────────────────────────
+exports.createReel = catchAsync(async (req, res) => {
+  const result = await postsService.createReel(req.user.id, req.body, req.reelFile);
+  res.status(201).json({ status: 'success', data: result });
+});
+
+// ─── Get Reel Feed ────────────────────────────────────────────────────────────
+exports.getReelFeed = catchAsync(async (req, res) => {
+  const result = await postsService.getReelFeed(req.user.id, req.query);
+  res.status(200).json({ status: 'success', data: result });
+});
+
+// ─── Share Post ───────────────────────────────────────────────────────────────
+exports.sharePost = catchAsync(async (req, res) => {
+  const result = await postsService.sharePost(req.params.postId, req.user.id, req.body);
+  res.status(201).json({ status: 'success', data: result });
+});

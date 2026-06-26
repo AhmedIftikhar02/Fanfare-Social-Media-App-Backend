@@ -11,6 +11,8 @@ const {
   searchPostsSchema,
   searchHashtagsSchema,
   explorePostsSchema,
+  hashtagNameParamSchema,
+  hashtagPostsQuerySchema,
 } = require('./search.validation');
 
 // All search routes require authentication
@@ -234,6 +236,118 @@ router.get('/posts', validate(searchPostsSchema, 'query'), controller.searchPost
  */
 router.get('/hashtags', validate(searchHashtagsSchema, 'query'), controller.searchHashtags);
 
+
+/**
+ * @swagger
+ * /search/hashtags/{name}:
+ *   get:
+ *     summary: Get hashtag metadata by exact name
+ *     tags: [Search]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: "Hashtag name without the # symbol (e.g. 'travel')"
+ *     responses:
+ *       200:
+ *         description: Hashtag metadata returned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     hashtag:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         postCount:
+ *                           type: integer
+ *       404:
+ *         description: Hashtag not found
+ */
+router.get(
+  '/hashtags/:name',
+  validate(hashtagNameParamSchema, 'params'),
+  controller.getHashtag
+);
+
+/**
+ * @swagger
+ * /search/hashtags/{name}/posts:
+ *   get:
+ *     summary: Get all public posts tagged with a hashtag
+ *     tags: [Search]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: "Hashtag name without the # symbol (e.g. 'travel')"
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 50
+ *     responses:
+ *       200:
+ *         description: Paginated posts for the hashtag returned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     hashtag:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         postCount:
+ *                           type: integer
+ *                     posts:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     meta:
+ *                       $ref: '#/components/schemas/PaginationMeta'
+ *       404:
+ *         description: Hashtag not found
+ */
+router.get(
+  '/hashtags/:name/posts',
+  validate(hashtagNameParamSchema, 'params'),
+  validate(hashtagPostsQuerySchema, 'query'),
+  controller.getHashtagPosts
+);
 
 
 module.exports = router;
