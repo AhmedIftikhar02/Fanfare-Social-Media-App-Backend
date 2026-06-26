@@ -138,6 +138,9 @@ const swaggerDefinition = {
     { name: 'News', description: 'Breaking news headlines (proxied from Currents API, cached)' },     
     { name: 'Search', description: 'Search users, posts, and hashtags via GIN indices' },
     { name: 'Notifications', description: 'In-app notification system tracking activities' },
+    { name: 'Messages', description: 'One-to-one direct messaging' },
+
+
   ],
 };
 

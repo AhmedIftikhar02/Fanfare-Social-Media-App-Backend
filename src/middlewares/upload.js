@@ -149,6 +149,13 @@ const processAvatar = async (req, _res, next) => {
 
 const deleteAvatarFile = (filename) => deleteUploadedFile('avatars', filename);
 
+
+const MESSAGE_VIDEO_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+
+const uploadMessageMedia = makeMulter(MESSAGE_VIDEO_MAX_BYTES, 1).single('media');
+const processMessageFile = makeProcessor('messages', IMAGE_MAX_BYTES);
+const deleteMessageFile  = (filename) => deleteUploadedFile('messages', filename);
+
 // ─── Reel Upload (single video, max 100 MB) ───────────────────────────────────
 
 const REEL_MAX_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -213,4 +220,7 @@ module.exports = {
   deleteAvatarFile,
   uploadReelMedia,
   processReelFile,
+  uploadMessageMedia,
+  processMessageFile,
+  deleteMessageFile,
 }; 

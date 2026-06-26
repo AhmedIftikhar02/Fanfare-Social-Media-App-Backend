@@ -11,6 +11,8 @@ const sportsRoutes = require('../modules/sports/sports.routes');
 const newsRoutes = require('../modules/news/news.routes');
 const searchRoutes = require('../modules/search/search.routes');
 const notificationsRoutes = require('../modules/notifications/notifications.routes');
+const messagesRouter = require('../modules/messages/messages.routes');
+
 
 const router = express.Router();
 
@@ -24,5 +26,7 @@ router.use('/sports', sportsRoutes);
 router.use('/news', newsRoutes); 
 router.use('/search', searchRoutes);
 router.use('/notifications', notificationsRoutes);
+router.use('/messages', messagesRouter);
+
 
 module.exports = router;

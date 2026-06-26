@@ -1,3 +1,5 @@
+//src/modules/auth/auth.routes.js
+
 const express = require('express');
 const controller = require('./auth.controller');
 const validate = require('../../middlewares/validate');

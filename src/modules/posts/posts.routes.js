@@ -1,3 +1,5 @@
+//src/modules/posts/posts.routes.js
+
 const express      = require('express');
 const controller   = require('./posts.controller');
 const validate     = require('../../middlewares/validate');
