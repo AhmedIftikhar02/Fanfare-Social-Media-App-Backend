@@ -1,3 +1,3 @@
 // api/index.js
 
-module.exports = require('../app');
+module.exports = require('../src/app');
