@@ -2,6 +2,7 @@
 
 const prisma   = require('../../database/prisma');
 const AppError = require('../../utils/AppError');
+const {deleteMessageFile} = require('../../middlewares/upload');
 
 // ─── Shared selector for a message ───────────────────────────────────────────
 const MESSAGE_SELECT = {

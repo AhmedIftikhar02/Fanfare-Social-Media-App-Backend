@@ -1,18 +1,19 @@
 // src/app.js
 
-const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const path = require('path');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
-const config = require('./config');
-const apiRoutes = require('./routes');
-const sanitize = require('./middlewares/sanitize');
-const { apiLimiter } = require('./middlewares/rateLimiter');
-const notFoundHandler = require('./middlewares/notFoundHandler');
-const errorHandler = require('./middlewares/errorHandler');
-const requestLogger = require('./middlewares/requestLogger');
+const express      = require('express');
+const helmet        = require('helmet');
+const cors           = require('cors');
+const swaggerUi      = require('swagger-ui-express');
+const swaggerSpec    = require('./config/swagger');
+const config          = require('./config');
+const apiRoutes        = require('./routes');
+const sanitize           = require('./middlewares/sanitize');
+const { apiLimiter }      = require('./middlewares/rateLimiter');
+const notFoundHandler      = require('./middlewares/notFoundHandler');
+const errorHandler          = require('./middlewares/errorHandler');
+const requestLogger          = require('./middlewares/requestLogger');
+const { renderStatusPage }    = require('./views/statusPage');
+const prisma                   = require('./database/prisma');
 
 const app = express();
 
@@ -22,26 +23,19 @@ app.use(requestLogger);
 app.use(express.json());
 app.use(sanitize);
 
-// ─── Serve Uploaded Media Statically ─────────────────────────────────────────
-const POSTS_DIR = process.env.VERCEL
-  ? '/tmp/uploads/posts'
-  : path.join(process.cwd(), 'uploads', 'posts');
-
-const STATUSES_DIR = process.env.VERCEL
-  ? '/tmp/uploads/statuses'
-  : path.join(process.cwd(), 'uploads', 'statuses');
-
-const AVATARS_DIR = process.env.VERCEL
-  ? '/tmp/uploads/avatars'
-  : path.join(process.cwd(), 'uploads', 'avatars');
-
-app.use('/uploads/posts', express.static(POSTS_DIR));
-app.use('/uploads/statuses', express.static(STATUSES_DIR));
-app.use('/uploads/avatars', express.static(AVATARS_DIR)); // ← ADDED
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Root status page ─────────────────────────────────────────────────────────
+app.get('/', async (req, res) => {
+  let dbOk = true;
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch {
+    dbOk = false;
+  }
+  res.status(200).send(renderStatusPage(process.env.NODE_ENV || 'production', dbOk));
+});
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customSiteTitle: 'Backend Boilerplate API Docs',
+  customSiteTitle: 'Fanfare API Docs',
 }));
 
 app.use('/api/v1', apiLimiter, apiRoutes);

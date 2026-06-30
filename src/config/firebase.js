@@ -1,41 +1,53 @@
-const admin = require('firebase-admin');
+// src/config/firebase.js
+
+'use strict';
+
 const path = require('path');
+const { initializeApp, getApps, getApp, cert } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 
-let firebaseApp;
+// ── Initialise once (safe for hot-reload / serverless) ────────────────────────
+function getFirebaseApp() {
+  if (getApps().length > 0) {
+    return getApp(); // already initialised — return existing instance
+  }
 
-try {
-  firebaseApp = admin.app();
-} catch (error) {
-  try {
-    let credentialData;
+  let serviceAccount;
 
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      credentialData = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    } else {
-      const filePath = path.resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './firebase-service-account.json');
-      credentialData = require(filePath);
-    }
-
-    firebaseApp = admin.initializeApp({
-      credential: admin.credential ? admin.credential.cert(credentialData) : require('firebase-admin/app').cert(credentialData)
-    });
-
-    console.log('✅ Firebase Admin SDK Initialized Successfully.');
-  } catch (initError) {
+  // Option A: JSON string in environment variable (Vercel / production)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
-      const { initializeApp, cert } = require('firebase-admin/app');
-      let credentialData = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
-        : require(path.resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './firebase-service-account.json'));
-
-      firebaseApp = initializeApp({
-        credential: cert(credentialData)
-      });
-      console.log('✅ Firebase Admin SDK Initialized Successfully via Native Module.');
-    } catch (nativeError) {
-      console.error('❌ Firebase initialization completely failed:', nativeError.message);
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      console.log('✅ Firebase: credential loaded from FIREBASE_SERVICE_ACCOUNT_JSON');
+    } catch (e) {
+      throw new Error(
+        `Firebase: failed to parse FIREBASE_SERVICE_ACCOUNT_JSON — ${e.message}\n` +
+        `Make sure "private_key_id" field name is correct and the JSON is not hand-edited.`
+      );
     }
   }
+  // Option B: File path (local development)
+  else {
+    const filePath = path.resolve(
+      process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './firebase-service-account.json'
+    );
+    try {
+      serviceAccount = require(filePath);
+      console.log(`✅ Firebase: credential loaded from file → ${filePath}`);
+    } catch (e) {
+      throw new Error(
+        `Firebase: failed to load service account from ${filePath}\n` +
+        `Make sure the file exists and is valid JSON.`
+      );
+    }
+  }
+
+  return initializeApp({ credential: cert(serviceAccount) });
 }
 
-module.exports = admin;
+const firebaseApp = getFirebaseApp();
+
+// Export the auth instance — this is what auth.service.js needs
+const firebaseAuth = getAuth(firebaseApp);
+
+module.exports = { firebaseApp, firebaseAuth };

@@ -423,7 +423,7 @@ exports.deletePost = async (postId, userId) => {
   if (post.userId !== userId) throw new AppError('You can only delete your own posts', 403);
 
   for (const m of post.media) {
-    deletePostFile(m.filename);
+    deletePostFile(m.filename, m.mediaType);
   }
 
   await prisma.$transaction(async (tx) => {

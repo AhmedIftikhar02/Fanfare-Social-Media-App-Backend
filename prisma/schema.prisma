@@ -47,6 +47,13 @@ enum MessageMediaType {
   video
 }
 
+enum OtpType {
+  email
+  phone
+}
+
+
+
 
 // ─── Models ───────────────────────────────────────────────────────────────────
 
@@ -211,19 +218,22 @@ model CommentLike {
   @@map("comment_likes")
 }
 
+
 model Status {
-  id        String      @id @default(uuid())
-  userId    String      @map("user_id")
-  filename  String
-  mediaUrl  String      @map("media_url")
-  mediaType MediaType   @map("media_type")
-  caption   String?
-  privacy   PostPrivacy @default(public)
-  viewCount Int         @default(0) @map("view_count")
-  createdAt DateTime    @default(now()) @map("created_at")
-  expiresAt DateTime    @default(dbgenerated("(now() + '24:00:00'::interval)")) @map("expires_at")
-  views     StatusView[]
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String      @id @default(uuid())
+  userId            String      @map("user_id")
+  filename          String
+  mediaUrl          String      @map("media_url")
+  mediaType         MediaType   @map("media_type")
+  thumbnailFilename String?     @map("thumbnail_filename")
+  thumbnailUrl      String?     @map("thumbnail_url")
+  caption           String?
+  privacy           PostPrivacy @default(public)
+  viewCount         Int         @default(0) @map("view_count")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  expiresAt         DateTime    @default(dbgenerated("(now() + '24:00:00'::interval)")) @map("expires_at")
+  views             StatusView[]
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -332,4 +342,18 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([senderId])
+}
+
+
+model OtpCode {
+  id          String   @id @default(uuid())
+  identifier  String                        // email address OR phone number
+  otpHash     String   @map("otp_hash")     // SHA-256 hash of the 6-digit code
+  type        OtpType  @map("otp_type")
+  attempts    Int      @default(0)
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([identifier, type])
+  @@map("otp_codes")
 }

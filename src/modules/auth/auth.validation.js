@@ -1,6 +1,9 @@
+// src/modules/auth/auth.validation.js
+
 const { z } = require('zod');
 
-// Email/password register (kept from boilerplate, extended)
+// ─── Existing schemas (keep all unchanged) ────────────────────────────────────
+
 const registerSchema = z.object({
   email: z.string().email('Invalid email'),
   password: z.string()
@@ -10,18 +13,15 @@ const registerSchema = z.object({
   fullName: z.string().max(100).optional(),
 });
 
-// Email/password login
 const loginSchema = z.object({
   email: z.string().email('Invalid email'),
   password: z.string().min(1, 'Password is required'),
 });
 
-// Firebase token exchange (Google Sign-In + Phone OTP)
 const firebaseAuthSchema = z.object({
   idToken: z.string().min(1, 'Firebase ID token is required'),
 });
 
-// Complete onboarding (set username after first Firebase login)
 const onboardingSchema = z.object({
   username: z.string()
     .min(3, 'Username must be at least 3 characters')
@@ -32,18 +32,46 @@ const onboardingSchema = z.object({
 });
 
 const refreshSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required')
+  refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
 const logoutSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required')
+  refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
-const forgotPwSchema = z.object({ 
-  email: z.string().email('Invalid email') 
+const forgotPwSchema = z.object({
+  email: z.string().email('Invalid email'),
+});
+
+// ─── NEW: OTP Schemas ─────────────────────────────────────────────────────────
+
+// E.164 phone number (e.g. +923001234567, +14155551234)
+const e164Phone = z
+  .string()
+  .min(7, 'Phone number is too short')
+  .max(16, 'Phone number is too long')
+  .regex(/^\+[1-9]\d{6,14}$/, 'Phone number must be in E.164 format (e.g. +923001234567)');
+
+const sendEmailOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+const verifyEmailOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  otp:   z.string().length(6, 'OTP must be exactly 6 digits').regex(/^\d+$/, 'OTP must contain digits only'),
+});
+
+const sendSmsOtpSchema = z.object({
+  phone: e164Phone,
+});
+
+const verifySmsOtpSchema = z.object({
+  phone: e164Phone,
+  otp:   z.string().length(6, 'OTP must be exactly 6 digits').regex(/^\d+$/, 'OTP must contain digits only'),
 });
 
 module.exports = {
+  // Existing
   registerSchema,
   loginSchema,
   firebaseAuthSchema,
@@ -51,4 +79,9 @@ module.exports = {
   refreshSchema,
   logoutSchema,
   forgotPwSchema,
+  // New OTP
+  sendEmailOtpSchema,
+  verifyEmailOtpSchema,
+  sendSmsOtpSchema,
+  verifySmsOtpSchema,
 };

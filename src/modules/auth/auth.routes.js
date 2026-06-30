@@ -1,5 +1,3 @@
-//src/modules/auth/auth.routes.js
-
 const express = require('express');
 const controller = require('./auth.controller');
 const validate = require('../../middlewares/validate');
@@ -13,6 +11,10 @@ const {
   refreshSchema,
   logoutSchema,
   forgotPwSchema,
+  sendEmailOtpSchema,
+  verifyEmailOtpSchema,
+  sendSmsOtpSchema,
+  verifySmsOtpSchema,
 } = require('./auth.validation');
 
 const router = express.Router();
@@ -253,5 +255,155 @@ router.get("/me", authenticate, controller.getMe);
  * }
  */
 router.post("/onboarding", authenticate, validate(onboardingSchema), controller.completeOnboarding);
+
+// ─── OTP Routes ─────────────────────────────────────────────────────────────
+
+const otpRouter = express.Router();
+
+/**
+ * @swagger
+ * {
+ * "/auth/otp/send-email": {
+ * "post": {
+ * "summary": "Send email OTP for login or registration",
+ * "tags": ["Auth"],
+ * "requestBody": {
+ * "required": true,
+ * "content": {
+ * "application/json": {
+ * "schema": {
+ * "type": "object",
+ * "required": ["email"],
+ * "properties": {
+ * "email": { "type": "string", "format": "email", "example": "user@example.com" }
+ * }
+ * }
+ * }
+ * }
+ * },
+ * "responses": {
+ * "200": { "description": "OTP sent to email" }
+ * }
+ * }
+ * }
+ * }
+ */
+otpRouter.post(
+  '/send-email',
+  authLimiter,
+  validate(sendEmailOtpSchema),
+  controller.sendEmailOtp,
+);
+
+/**
+ * @swagger
+ * {
+ * "/auth/otp/verify-email": {
+ * "post": {
+ * "summary": "Verify email OTP — returns JWT pair + user object",
+ * "tags": ["Auth"],
+ * "requestBody": {
+ * "required": true,
+ * "content": {
+ * "application/json": {
+ * "schema": {
+ * "type": "object",
+ * "required": ["email", "otp"],
+ * "properties": {
+ * "email": { "type": "string", "format": "email" },
+ * "otp":   { "type": "string", "example": "483921" }
+ * }
+ * }
+ * }
+ * }
+ * },
+ * "responses": {
+ * "200": { "description": "OTP valid — tokens issued" },
+ * "400": { "description": "Invalid or expired OTP" }
+ * }
+ * }
+ * }
+ * }
+ */
+otpRouter.post(
+  '/verify-email',
+  authLimiter,
+  validate(verifyEmailOtpSchema),
+  controller.verifyEmailOtp,
+);
+
+/**
+ * @swagger
+ * {
+ * "/auth/otp/send-sms": {
+ * "post": {
+ * "summary": "Send SMS OTP for login or registration",
+ * "tags": ["Auth"],
+ * "requestBody": {
+ * "required": true,
+ * "content": {
+ * "application/json": {
+ * "schema": {
+ * "type": "object",
+ * "required": ["phone"],
+ * "properties": {
+ * "phone": { "type": "string", "example": "+923001234567" }
+ * }
+ * }
+ * }
+ * }
+ * },
+ * "responses": {
+ * "200": { "description": "OTP sent to phone" }
+ * }
+ * }
+ * }
+ * }
+ */
+otpRouter.post(
+  '/send-sms',
+  authLimiter,
+  validate(sendSmsOtpSchema),
+  controller.sendSmsOtp,
+);
+
+/**
+ * @swagger
+ * {
+ * "/auth/otp/verify-phone": {
+ * "post": {
+ * "summary": "Verify phone OTP — returns JWT pair + user object",
+ * "tags": ["Auth"],
+ * "requestBody": {
+ * "required": true,
+ * "content": {
+ * "application/json": {
+ * "schema": {
+ * "type": "object",
+ * "required": ["phone", "otp"],
+ * "properties": {
+ * "phone": { "type": "string", "example": "+923001234567" },
+ * "otp":   { "type": "string", "example": "826471" }
+ * }
+ * }
+ * }
+ * }
+ * },
+ * "responses": {
+ * "200": { "description": "OTP valid — tokens issued" },
+ * "400": { "description": "Invalid or expired OTP" }
+ * }
+ * }
+ * }
+ * }
+ */
+otpRouter.post(
+  '/verify-phone',
+  authLimiter,
+  validate(verifySmsOtpSchema),
+  controller.verifySmsOtp,
+);
+
+router.use('/otp', otpRouter);
 
 module.exports = router;

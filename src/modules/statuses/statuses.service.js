@@ -2,20 +2,21 @@
 
 const prisma          = require('../../database/prisma');
 const AppError        = require('../../utils/AppError');
-const { deleteStatusFile } = require('../../middlewares/upload');
+const { deleteStatusFile, deleteStatusThumbnail } = require('../../middlewares/upload');
 const { getPagination, buildPaginationMeta } = require('../../utils/paginate');
 
 // ─── Helper: shape a single status for API response ──────────────────────────
 const formatStatus = (status, viewerId) => ({
-  id:        status.id,
-  mediaUrl:  status.mediaUrl,
-  mediaType: status.mediaType,
-  caption:   status.caption,
-  privacy:   status.privacy,
-  viewCount: status.viewCount, // Only meaningful to owner
-  createdAt: status.createdAt,
-  expiresAt: status.expiresAt,
-  isViewed:  Array.isArray(status.views)
+  id:           status.id,
+  mediaUrl:     status.mediaUrl,
+  mediaType:    status.mediaType,
+  thumbnailUrl: status.thumbnailUrl || null,
+  caption:      status.caption,
+  privacy:      status.privacy,
+  viewCount:    status.viewCount, // Only meaningful to owner
+  createdAt:    status.createdAt,
+  expiresAt:    status.expiresAt,
+  isViewed:     Array.isArray(status.views)
     ? status.views.some((v) => v.viewerId === viewerId)
     : false,
 });
@@ -42,10 +43,12 @@ exports.createStatus = async (userId, body, processedFile) => {
   const status = await prisma.status.create({
     data: {
       userId,
-      filename:  processedFile.filename,
-      mediaUrl:  processedFile.mediaUrl,
-      mediaType: processedFile.mediaType,
-      caption:   caption || null,
+      filename:          processedFile.filename,
+      mediaUrl:          processedFile.mediaUrl,
+      mediaType:         processedFile.mediaType,
+      thumbnailFilename: processedFile.thumbnailFilename || null,
+      thumbnailUrl:      processedFile.thumbnailUrl || null,
+      caption:           caption || null,
       privacy,
     },
     include: {
@@ -97,7 +100,6 @@ exports.getStatusFeed = async (requesterId) => {
     },
   });
 
-  // Collect already-included user IDs to exclude from random public
   const includedIds = new Set([
     requesterId,
     ...followedUsers.map((u) => u.id),
@@ -106,7 +108,6 @@ exports.getStatusFeed = async (requesterId) => {
   const includedIdsArray = Array.from(includedIds);
 
   // ── Random public users (not followed, not self) ─────────────────────────────
-  // Safe UNNEST optimization applied for strict Postgres compatibility
   const publicUserRows = await prisma.$queryRaw`
     SELECT id FROM (
       SELECT DISTINCT u.id
@@ -140,6 +141,8 @@ exports.getStatusFeed = async (requesterId) => {
   // ── Build response groups ────────────────────────────────────────────────────
   const buildGroup = (user) => {
     const statuses = (user.statuses || []).map((s) => formatStatus(s, requesterId));
+    const latest = statuses[statuses.length - 1]; // orderBy createdAt asc → last = newest
+
     return {
       user: {
         id:        user.id,
@@ -149,19 +152,19 @@ exports.getStatusFeed = async (requesterId) => {
       },
       statuses,
       hasUnviewed: statuses.some((s) => !s.isViewed),
+      // Convenience field — avoids the client having to reach into the array
+      // to find the latest story's thumbnail for the home-feed story ring.
+      latestThumbnailUrl: latest ? (latest.thumbnailUrl || latest.mediaUrl) : null,
     };
   };
 
-  // Own group always first, even if empty
   const ownGroup = buildGroup(ownUser);
 
-  // Followed: unviewed groups before viewed groups
   const followedGroups = followedUsers
     .map(buildGroup)
     .filter((g) => g.statuses.length > 0)
     .sort((a, b) => Number(b.hasUnviewed) - Number(a.hasUnviewed));
 
-  // Public: same sorting rules
   const publicGroups = publicUsers
     .map(buildGroup)
     .filter((g) => g.statuses.length > 0)
@@ -182,7 +185,6 @@ exports.viewStatus = async (statusId, viewerId) => {
 
   if (!status) throw new AppError('Story not found or expired', 404);
 
-  // Privacy evaluations
   if (status.privacy === 'only_me' && status.userId !== viewerId) {
     throw new AppError('Story not found or expired', 404);
   }
@@ -194,7 +196,6 @@ exports.viewStatus = async (statusId, viewerId) => {
     if (!follow) throw new AppError('Story not found or expired', 404);
   }
 
-  // Record view (idempotent upsert transaction)
   if (status.userId !== viewerId) {
     await prisma.$transaction([
       prisma.statusView.upsert({
@@ -217,7 +218,6 @@ exports.viewStatus = async (statusId, viewerId) => {
 
   const formatted = formatStatus(status, viewerId);
 
-  // Strip visibility metrics from outside users
   if (status.userId !== viewerId) {
     delete formatted.viewCount;
   }
@@ -263,7 +263,7 @@ exports.getStatusViewers = async (statusId, requesterId, query) => {
 exports.deleteStatus = async (statusId, requesterId) => {
   const status = await prisma.status.findUnique({
     where:  { id: statusId },
-    select: { userId: true, filename: true },
+    select: { userId: true, filename: true, thumbnailFilename: true },
   });
 
   if (!status) throw new AppError('Story not found', 404);
@@ -271,6 +271,7 @@ exports.deleteStatus = async (statusId, requesterId) => {
 
   await prisma.status.delete({ where: { id: statusId } });
 
-  // Safe isolated filesystem purge
-  deleteStatusFile(status.filename);
+  // Safe isolated filesystem purge — main media + thumbnail
+  deleteStatusFile(status.filename, status.mediaType);
+  deleteStatusThumbnail(status.thumbnailFilename);
 };

@@ -4,7 +4,7 @@ const express      = require('express');
 const router       = express.Router();
 const authenticate = require('../../middlewares/authenticate');
 const validate     = require('../../middlewares/validate');
-const { apiLimiter } = require('../../middlewares/rateLimiter');
+const { apiLimiter,pollLimiter  } = require('../../middlewares/rateLimiter');
 const controller   = require('./notifications.controller');
 const {
   listNotificationsSchema,
@@ -51,7 +51,7 @@ router.use(apiLimiter);
  *                       type: integer
  *                       example: 5
  */
-router.get('/unread-count', controller.getUnreadCount);
+router.get('/unread-count',pollLimiter , controller.getUnreadCount);
 
 /**
  * @swagger

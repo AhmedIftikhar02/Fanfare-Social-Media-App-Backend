@@ -2,7 +2,7 @@ const rateLimit = require('express-rate-limit');
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { status: 'fail', message: 'Too many requests, please try again later' },
@@ -10,7 +10,7 @@ const apiLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { status: 'fail', message: 'Too many attempts, please try again later' },
@@ -23,7 +23,7 @@ const authLimiter = rateLimit({
  */
 const proxyLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute window
-  max: 20,             // 20 requests per minute per IP
+  max: 60,            
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -32,8 +32,21 @@ const proxyLimiter = rateLimit({
   },
 });
 
+const pollLimiter = rateLimit({
+  windowMs: 60 * 1000,         // 1 minute window
+  max: 200,                    // 200 req/min per IP — covers batch status fetches
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: 'fail',
+    message: 'Too many polling requests, please slow down.',
+  },
+});
+
+
 module.exports = { 
   apiLimiter, 
   authLimiter, 
-  proxyLimiter 
+  proxyLimiter,
+  pollLimiter 
 };

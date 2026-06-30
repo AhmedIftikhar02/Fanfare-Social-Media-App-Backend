@@ -3,9 +3,13 @@ const AppError = require('../../utils/AppError');
 const { hashPassword, comparePassword } = require('../../utils/password');
 const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../../utils/jwt');
 const hashToken = require('../../utils/hashToken');
-const admin = require('../../config/firebase');
+const { firebaseAuth } = require('../../config/firebase');
 const crypto = require('crypto');
 const logger = require('../../config/logger');
+const { createOtp, verifyOtp } = require('../../utils/otp');
+const { sendOtpEmail } = require('../../utils/emailSender');
+const { sendOtpSms } = require('../../utils/smsSender');
+const config = require('../../config');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,6 +35,28 @@ async function issueTokenPair(userId, role) {
 
   return { accessToken, refreshToken };
 }
+
+// ─── Shared helper: issue token pair + persist refresh token ─────────────────
+const _issueTokens = async (userId) => {
+  const payload = { id: userId };
+
+  const accessToken  = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+
+  const expiresAt = new Date(
+    Date.now() + (parseInt(config.jwt.refreshExpiresIn, 10) || 7 * 24 * 60 * 60) * 1000,
+  );
+
+  await prisma.refreshToken.create({
+    data: {
+      userId,
+      tokenHash: hashToken(refreshToken),
+      expiresAt,
+    },
+  });
+
+  return { accessToken, refreshToken };
+};
 
 // ─── Email / Password Register ────────────────────────────────────────────────
 
@@ -65,7 +91,7 @@ exports.login = async ({ email, password }) => {
 exports.firebaseAuth = async ({ idToken }) => {
   let decoded;
   try {
-    decoded = await admin.auth().verifyIdToken(idToken);
+    decoded = await firebaseAuth.verifyIdToken(idToken);
   } catch (err) {
     logger.warn('Firebase token verification failed', { error: err.message });
     throw new AppError('Invalid or expired Firebase token', 401);
@@ -194,4 +220,102 @@ exports.forgotPassword = async ({ email }) => {
 
   // Log to terminal for local verification
   logger.info(`[RESET TOKEN for ${email}]: ${rawToken}`);
+};
+
+// ─── 1. Send Email OTP ────────────────────────────────────────────────────────
+exports.sendEmailOtp = async (email) => {
+  const code = await createOtp(email, 'email');
+  await sendOtpEmail(email, code);
+  // Return nothing — caller just returns 200 OK
+};
+
+// ─── 2. Verify Email OTP + Login/Register ────────────────────────────────────
+exports.verifyEmailOtp = async (email, submittedOtp) => {
+  const result = await verifyOtp(email, 'email', submittedOtp);
+
+  if (!result.valid) {
+    const err = new Error(result.reason);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Find or create the user
+  let user = await prisma.user.findUnique({ where: { email } });
+  const isNew = !user;
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email,
+        isEmailVerified: true,
+        onboardingDone:  false,
+      },
+    });
+  } else if (!user.isEmailVerified) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data:  { isEmailVerified: true },
+    });
+  }
+
+  const tokens = await _issueTokens(user.id);
+
+  return {
+    ...tokens,
+    user: {
+      id:             user.id,
+      email:          user.email,
+      username:       user.username,
+      fullName:       user.fullName,
+      avatarUrl:      user.avatarUrl,
+      onboardingDone: user.onboardingDone,
+    },
+    isNew,
+  };
+};
+
+// ─── 3. Send SMS OTP ──────────────────────────────────────────────────────────
+exports.sendSmsOtp = async (phone) => {
+  const code = await createOtp(phone, 'phone');
+  await sendOtpSms(phone, code);
+};
+
+// ─── 4. Verify SMS OTP + Login/Register ──────────────────────────────────────
+exports.verifySmsOtp = async (phone, submittedOtp) => {
+  const result = await verifyOtp(phone, 'phone', submittedOtp);
+
+  if (!result.valid) {
+    const err = new Error(result.reason);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Find or create the user
+  let user = await prisma.user.findUnique({ where: { phone } });
+  const isNew = !user;
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        phone,
+        onboardingDone: false,
+      },
+    });
+  }
+
+  const tokens = await _issueTokens(user.id);
+
+  return {
+    ...tokens,
+    user: {
+      id:             user.id,
+      phone:          user.phone,
+      email:          user.email,
+      username:       user.username,
+      fullName:       user.fullName,
+      avatarUrl:      user.avatarUrl,
+      onboardingDone: user.onboardingDone,
+    },
+    isNew,
+  };
 };

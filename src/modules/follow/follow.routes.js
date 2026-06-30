@@ -4,14 +4,15 @@ const express    = require('express');
 const controller = require('./follow.controller');
 const validate   = require('../../middlewares/validate');
 const authenticate = require('../../middlewares/authenticate');
+const { apiLimiter, pollLimiter } = require('../../middlewares/rateLimiter');
 const {
   userIdParamSchema,
   followRequestIdParamSchema,
 } = require('./follow.validation');
 
 const router = express.Router();
-
 router.use(authenticate);
+router.use(apiLimiter);
 
 // ─── Incoming Requests (must be above /:userId) ───────────────────────────────
 
@@ -106,6 +107,7 @@ router.put(
  */
 router.get(
   '/status/:userId',
+  pollLimiter, 
   validate(userIdParamSchema, 'params'),
   controller.getFollowStatus
 );
